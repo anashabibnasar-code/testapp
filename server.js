@@ -11,7 +11,15 @@ app.use(express.static(path.join(__dirname, "public")));
 app.get("/api/tests", async (req, res) => {
   try {
     const tests = await all(
-      `SELECT id, title, duration_minutes AS durationMinutes, created_at AS createdAt FROM tests ORDER BY id DESC`
+      `SELECT
+         t.id,
+         t.title,
+         t.duration_minutes AS durationMinutes,
+         t.pass_mark AS passMark,
+         t.created_at AS createdAt,
+         (SELECT COUNT(*) FROM questions q WHERE q.test_id = t.id) AS totalQuestions
+       FROM tests t
+       ORDER BY t.id DESC`
     );
     res.json(tests);
   } catch (error) {
@@ -20,10 +28,22 @@ app.get("/api/tests", async (req, res) => {
 });
 
 app.post("/api/tests", async (req, res) => {
-  const { title, durationMinutes, questions } = req.body;
+  const { title, durationMinutes, passMark, questions } = req.body;
 
-  if (!title || !Number.isInteger(durationMinutes) || durationMinutes <= 0 || !Array.isArray(questions) || questions.length === 0) {
+  if (
+    !title ||
+    !Number.isInteger(durationMinutes) ||
+    durationMinutes <= 0 ||
+    !Number.isInteger(passMark) ||
+    passMark <= 0 ||
+    !Array.isArray(questions) ||
+    questions.length === 0
+  ) {
     return res.status(400).json({ error: "Invalid payload." });
+  }
+
+  if (passMark > questions.length) {
+    return res.status(400).json({ error: "Pass mark cannot be greater than total questions." });
   }
 
   const invalidQuestion = questions.some((q) => {
@@ -46,8 +66,8 @@ app.post("/api/tests", async (req, res) => {
   try {
     const createdAt = new Date().toISOString();
     const testResult = await run(
-      `INSERT INTO tests (title, duration_minutes, created_at) VALUES (?, ?, ?)`,
-      [title.trim(), durationMinutes, createdAt]
+      `INSERT INTO tests (title, duration_minutes, pass_mark, created_at) VALUES (?, ?, ?, ?)`,
+      [title.trim(), durationMinutes, passMark, createdAt]
     );
 
     for (const q of questions) {
@@ -78,7 +98,7 @@ app.get("/api/tests/:id", async (req, res) => {
 
   try {
     const test = await get(
-      `SELECT id, title, duration_minutes AS durationMinutes FROM tests WHERE id = ?`,
+      `SELECT id, title, duration_minutes AS durationMinutes, pass_mark AS passMark FROM tests WHERE id = ?`,
       [testId]
     );
     if (!test) return res.status(404).json({ error: "Test not found." });
@@ -100,6 +120,22 @@ app.get("/api/tests/:id", async (req, res) => {
   }
 });
 
+app.delete("/api/tests/:id", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId)) return res.status(400).json({ error: "Invalid test id." });
+
+  try {
+    await run(`DELETE FROM submissions WHERE test_id = ?`, [testId]);
+    await run(`DELETE FROM questions WHERE test_id = ?`, [testId]);
+    const result = await run(`DELETE FROM tests WHERE id = ?`, [testId]);
+
+    if (result.changes === 0) return res.status(404).json({ error: "Test not found." });
+    res.json({ ok: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete test." });
+  }
+});
+
 app.post("/api/tests/:id/start", async (req, res) => {
   const testId = Number(req.params.id);
   const studentName = String(req.body.studentName || "").trim();
@@ -109,7 +145,10 @@ app.post("/api/tests/:id/start", async (req, res) => {
   }
 
   try {
-    const test = await get(`SELECT id, duration_minutes AS durationMinutes FROM tests WHERE id = ?`, [testId]);
+    const test = await get(
+      `SELECT id, duration_minutes AS durationMinutes, pass_mark AS passMark FROM tests WHERE id = ?`,
+      [testId]
+    );
     if (!test) return res.status(404).json({ error: "Test not found." });
 
     const startedAt = Date.now();
@@ -122,6 +161,7 @@ app.post("/api/tests/:id/start", async (req, res) => {
       submissionId: result.id,
       startedAt,
       durationMinutes: test.durationMinutes,
+      passMark: test.passMark,
     });
   } catch (error) {
     res.status(500).json({ error: "Failed to start test." });
@@ -138,7 +178,10 @@ app.post("/api/tests/:id/submit", async (req, res) => {
   }
 
   try {
-    const test = await get(`SELECT id, title, duration_minutes AS durationMinutes FROM tests WHERE id = ?`, [testId]);
+    const test = await get(
+      `SELECT id, title, duration_minutes AS durationMinutes, pass_mark AS passMark FROM tests WHERE id = ?`,
+      [testId]
+    );
     if (!test) return res.status(404).json({ error: "Test not found." });
 
     const submission = await get(`SELECT * FROM submissions WHERE id = ? AND test_id = ?`, [submissionId, testId]);
@@ -184,10 +227,14 @@ app.post("/api/tests/:id/submit", async (req, res) => {
       [submittedAt, score, questions.length, JSON.stringify(review), submissionId]
     );
 
+    const result = score >= test.passMark ? "PASS" : "FAIL";
+
     res.json({
       testTitle: test.title,
       score,
       total: questions.length,
+      passMark: test.passMark,
+      result,
       percent: Math.round((score / Math.max(questions.length, 1)) * 100),
       review,
     });

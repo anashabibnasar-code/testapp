@@ -37,9 +37,16 @@ async function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
       duration_minutes INTEGER NOT NULL,
+      pass_mark INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL
     )
   `);
+
+  const testColumns = await all(`PRAGMA table_info(tests)`);
+  const hasPassMark = testColumns.some((col) => col.name === "pass_mark");
+  if (!hasPassMark) {
+    await run(`ALTER TABLE tests ADD COLUMN pass_mark INTEGER NOT NULL DEFAULT 1`);
+  }
 
   await run(`
     CREATE TABLE IF NOT EXISTS questions (

@@ -21,6 +21,16 @@
       <label>Timer (minutes)</label>
       <input id="durationMinutes" type="number" min="1" value="30" />
 
+      <label>Pass Mark (minimum correct answers)</label>
+      <input id="passMark" type="number" min="1" value="1" />
+
+      <div class="question-box">
+        <h2>Bulk Paste Questions</h2>
+        <p>Paste format: <code>Question 1 ... A. ... B. ... C. ... D. ... Answer: B</code></p>
+        <textarea id="bulkInput" rows="10" placeholder="Paste all questions here..."></textarea>
+        <button id="parseBulkBtn" type="button">Parse And Add Questions</button>
+      </div>
+
       <div class="question-box">
         <h2>Add Question</h2>
         <label>Question</label>

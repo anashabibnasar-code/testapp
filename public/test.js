@@ -77,6 +77,7 @@ async function loadTest() {
 
     loadedTest = data;
     testTitle.textContent = data.title;
+    testMessage.textContent = `Pass mark: ${data.passMark}/${data.questions.length}`;
   } catch (error) {
     testMessage.textContent = error.message;
   }
@@ -150,7 +151,14 @@ async function submitTest(autoSubmit) {
 }
 
 function showResult(data, autoSubmit) {
-  const scoreHtml = `<div class="score">Score: ${data.score}/${data.total} (${data.percent}%)</div>`;
+  const resultClass = data.result === "PASS" ? "correct" : "wrong";
+  const scoreHtml = `
+    <div class="score">
+      Score: ${data.score}/${data.total} (${data.percent}%)<br>
+      Pass Mark: ${data.passMark}/${data.total}<br>
+      Result: <span class="${resultClass}">${data.result}</span>
+    </div>
+  `;
   const reviewHtml = data.review
     .map((item, index) => {
       const selectedText =

@@ -40,6 +40,10 @@ button {
   cursor: pointer;
 }
 button:hover { opacity: 0.95; }
+.delete-test-btn {
+  margin-top: 8px;
+  background: #b91c1c;
+}
 .list { list-style: none; padding: 0; margin: 8px 0 0; }
 .list li {
   border: 1px solid #deebf7;
