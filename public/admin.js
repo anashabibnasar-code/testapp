@@ -116,36 +116,32 @@ function addSingleQuestion() {
 }
 
 function parseQuestionBlock(blockText) {
-  const lines = blockText.replace(/\r\n/g, "\n").split("\n");
-  if (lines.length > 0 && /^\s*Question\s+\d+\b/i.test(lines[0])) {
-    lines.shift();
-  }
+  let text = blockText.replace(/\r\n/g, "\n").replace(/\u00A0/g, " ");
+  text = text.replace(/^\s*Question\s+\d+\b\s*/i, "");
+  let answerIndex = null;
 
+  const answerMatches = [...text.matchAll(/\bAnswer\s*:\s*([ABCD])\b/gi)];
+  if (answerMatches.length === 0) return null;
+
+  // Use the last answer in block so "Correct output: Answer: A" overrides earlier answer.
+  answerIndex = "ABCD".indexOf(answerMatches[answerMatches.length - 1][1].toUpperCase());
+
+  const firstAnswerPos = answerMatches[0].index || text.length;
+  text = text.slice(0, firstAnswerPos);
+  text = text.replace(/(^|[^A-Za-z0-9_])([ABCD])\)\s+/g, "$1$2. ");
+  text = text.replace(/([^\n])\s*([ABCD])\.\s+/g, "$1\n$2. ");
+
+  const lines = text.split("\n");
   const questionParts = [];
   const options = [null, null, null, null];
   let currentOption = -1;
-  let answerIndex = null;
-  let afterAnswer = false;
 
   for (const rawLine of lines) {
-    const line = rawLine.replace(/\u00A0/g, " ");
-    if (afterAnswer) {
-      const correctedAnswerMatch = line.match(/\bAnswer\s*:\s*([ABCD])\b/i);
-      if (correctedAnswerMatch) {
-        answerIndex = "ABCD".indexOf(correctedAnswerMatch[1].toUpperCase());
-      }
-      continue;
-    }
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/^\s*(ABAP|SAP HANA)\s+Section\s*$/i.test(line)) continue;
 
-    const answerMatch = line.match(/\bAnswer\s*:\s*([ABCD])\b/i);
-    if (answerMatch) {
-      answerIndex = "ABCD".indexOf(answerMatch[1].toUpperCase());
-      currentOption = -1;
-      afterAnswer = true;
-      continue;
-    }
-
-    const optionMatch = line.match(/^\s*([ABCD])\.\s*(.*)$/i);
+    const optionMatch = line.match(/^([ABCD])\.\s*(.*)$/i);
     if (optionMatch) {
       currentOption = "ABCD".indexOf(optionMatch[1].toUpperCase());
       const initialText = optionMatch[2].trim();
@@ -154,16 +150,12 @@ function parseQuestionBlock(blockText) {
     }
 
     if (currentOption >= 0) {
-      const continuation = line.trim();
-      if (continuation) {
-        options[currentOption] = options[currentOption]
-          ? `${options[currentOption]} ${continuation}`.trim()
-          : continuation;
-      }
+      options[currentOption] = options[currentOption]
+        ? `${options[currentOption]} ${line}`.trim()
+        : line;
       continue;
     }
 
-    if (/^\s*(ABAP|SAP HANA)\s+Section\s*$/i.test(line)) continue;
     questionParts.push(line);
   }
 
