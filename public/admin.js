@@ -76,7 +76,13 @@ function parseQuestionBlock(blockText) {
 
   for (const rawLine of lines) {
     const line = rawLine.replace(/\u00A0/g, " ");
-    if (afterAnswer) continue;
+    if (afterAnswer) {
+      const correctedAnswerMatch = line.match(/(?:✅\s*)?\bAnswer\s*:\s*([ABCD])\b/i);
+      if (correctedAnswerMatch) {
+        answerIndex = "ABCD".indexOf(correctedAnswerMatch[1].toUpperCase());
+      }
+      continue;
+    }
 
     const answerMatch = line.match(/(?:✅\s*)?\bAnswer\s*:\s*([ABCD])\b/i);
     if (answerMatch) {
@@ -89,14 +95,17 @@ function parseQuestionBlock(blockText) {
     const optionMatch = line.match(/^\s*([ABCD])\.\s*(.*)$/i);
     if (optionMatch) {
       currentOption = "ABCD".indexOf(optionMatch[1].toUpperCase());
-      options[currentOption] = optionMatch[2].trim();
+      const initialText = optionMatch[2].trim();
+      options[currentOption] = initialText;
       continue;
     }
 
-    if (currentOption >= 0 && options[currentOption]) {
+    if (currentOption >= 0) {
       const continuation = line.trim();
       if (continuation) {
-        options[currentOption] = `${options[currentOption]} ${continuation}`.trim();
+        options[currentOption] = options[currentOption]
+          ? `${options[currentOption]} ${continuation}`.trim()
+          : continuation;
       }
       continue;
     }
@@ -106,7 +115,7 @@ function parseQuestionBlock(blockText) {
   }
 
   const questionTextValue = questionParts.join("\n").trim();
-  if (!questionTextValue || options.some((x) => !x) || answerIndex === null) {
+  if (!questionTextValue || options.some((x) => !x || !x.trim()) || answerIndex === null) {
     return null;
   }
 
