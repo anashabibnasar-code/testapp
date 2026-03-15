@@ -25,13 +25,48 @@ function escapeHtml(text) {
     .replaceAll("'", "&#039;");
 }
 
+function renderQuestionContent(rawQuestion) {
+  const question = String(rawQuestion || "");
+  const codeRegex = /```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g;
+  const chunks = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = codeRegex.exec(question)) !== null) {
+    const before = question.slice(lastIndex, match.index).trim();
+    if (before) {
+      chunks.push(`<p class="q-text">${escapeHtml(before).replaceAll("\n", "<br>")}</p>`);
+    }
+
+    const lang = match[1] ? `<div class="code-lang">${escapeHtml(match[1])}</div>` : "";
+    const code = match[2].replace(/^\n/, "").trimEnd();
+    chunks.push(`${lang}<pre class="code-block"><code>${escapeHtml(code)}</code></pre>`);
+    lastIndex = codeRegex.lastIndex;
+  }
+
+  const after = question.slice(lastIndex).trim();
+  if (after) {
+    chunks.push(`<p class="q-text">${escapeHtml(after).replaceAll("\n", "<br>")}</p>`);
+  }
+
+  if (chunks.length === 0) {
+    return `<p class="q-text">${escapeHtml(question).replaceAll("\n", "<br>")}</p>`;
+  }
+
+  return chunks.join("");
+}
+
 function renderQuestions() {
   testForm.innerHTML = "";
   loadedTest.questions.forEach((q, index) => {
     const div = document.createElement("div");
     div.className = "question";
+    const contentHtml = renderQuestionContent(q.question);
     div.innerHTML = `
-      <strong>${index + 1}. ${escapeHtml(q.question)}</strong>
+      <div class="question-stem">
+        <div class="question-index">${index + 1}.</div>
+        <div class="question-body">${contentHtml}</div>
+      </div>
       ${q.options
         .map(
           (opt, i) => `
@@ -168,7 +203,10 @@ function showResult(data, autoSubmit) {
       const correctText = `${"ABCD"[item.correctIndex]}) ${escapeHtml(item.options[item.correctIndex])}`;
       return `
         <div class="review-item">
-          <strong>Q${index + 1}. ${escapeHtml(item.question)}</strong>
+          <div class="question-stem">
+            <div class="question-index">Q${index + 1}.</div>
+            <div class="question-body">${renderQuestionContent(item.question)}</div>
+          </div>
           <div class="${item.isCorrect ? "correct" : "wrong"}">Your answer: ${selectedText}</div>
           <div class="correct">Correct answer: ${correctText}</div>
         </div>

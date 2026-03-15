@@ -33,7 +33,7 @@ function renderDraft() {
 }
 
 function escapeHtml(text) {
-  return text
+  return String(text)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -63,24 +63,30 @@ function addSingleQuestion() {
 }
 
 function parseQuestionBlock(blockText) {
-  const lines = blockText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  const lines = blockText.replace(/\r\n/g, "\n").split("\n");
+  if (lines.length > 0 && /^\s*Question\s+\d+\b/i.test(lines[0])) {
+    lines.shift();
+  }
 
   const questionParts = [];
   const options = [null, null, null, null];
   let currentOption = -1;
   let answerIndex = null;
+  let afterAnswer = false;
 
-  for (const line of lines) {
-    const answerMatch = line.match(/^✅?\s*Answer\s*:\s*([ABCD])\b/i);
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\u00A0/g, " ");
+    if (afterAnswer) continue;
+
+    const answerMatch = line.match(/(?:✅\s*)?\bAnswer\s*:\s*([ABCD])\b/i);
     if (answerMatch) {
       answerIndex = "ABCD".indexOf(answerMatch[1].toUpperCase());
+      currentOption = -1;
+      afterAnswer = true;
       continue;
     }
 
-    const optionMatch = line.match(/^([ABCD])\.\s*(.+)$/i);
+    const optionMatch = line.match(/^\s*([ABCD])\.\s*(.*)$/i);
     if (optionMatch) {
       currentOption = "ABCD".indexOf(optionMatch[1].toUpperCase());
       options[currentOption] = optionMatch[2].trim();
@@ -88,33 +94,39 @@ function parseQuestionBlock(blockText) {
     }
 
     if (currentOption >= 0 && options[currentOption]) {
-      options[currentOption] = `${options[currentOption]} ${line}`.trim();
+      const continuation = line.trim();
+      if (continuation) {
+        options[currentOption] = `${options[currentOption]} ${continuation}`.trim();
+      }
       continue;
     }
 
+    if (/^\s*(ABAP|SAP HANA)\s+Section\s*$/i.test(line)) continue;
     questionParts.push(line);
   }
 
-  if (!questionParts.length || options.some((x) => !x) || answerIndex === null) {
+  const questionTextValue = questionParts.join("\n").trim();
+  if (!questionTextValue || options.some((x) => !x) || answerIndex === null) {
     return null;
   }
 
   return {
-    question: questionParts.join(" ").replace(/\s+/g, " ").trim(),
+    question: questionTextValue,
     options,
     answerIndex,
   };
 }
 
 function parseBulkQuestions(rawText) {
-  const blocks = [...rawText.matchAll(/Question\s+\d+\s*([\s\S]*?)(?=Question\s+\d+|$)/gi)];
-  if (blocks.length === 0) return [];
-
+  const text = rawText.replace(/\r\n/g, "\n");
+  const blocks = text.match(/Question\s+\d+\b[\s\S]*?(?=\n\s*Question\s+\d+\b|$)/gi) || [];
   const parsed = [];
+
   for (const block of blocks) {
-    const q = parseQuestionBlock(block[1]);
+    const q = parseQuestionBlock(block);
     if (q) parsed.push(q);
   }
+
   return parsed;
 }
 
@@ -129,7 +141,8 @@ parseBulkBtn.addEventListener("click", () => {
 
   const parsed = parseBulkQuestions(raw);
   if (parsed.length === 0) {
-    adminMessage.textContent = "Could not parse questions. Keep format: Question X + A/B/C/D + Answer: X";
+    adminMessage.textContent =
+      "Could not parse questions. Use format: Question X + A/B/C/D + Answer: B.";
     return;
   }
 
