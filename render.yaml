@@ -1,4 +1,8 @@
-﻿services:
+﻿databases:
+  - name: test-platform-db
+    plan: free
+
+services:
   - type: web
     name: test-platform
     env: node
@@ -7,9 +11,7 @@
     startCommand: npm start
     autoDeploy: true
     envVars:
-      - key: DB_PATH
-        value: /var/data/exam.db
-    disks:
-      - name: test-platform-data
-        mountPath: /var/data
-        sizeGB: 1
+      - key: DATABASE_URL
+        fromDatabase:
+          name: test-platform-db
+          property: connectionString

@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "test-platform",
   "version": "1.0.0",
   "description": "Online test platform with admin upload, student test flow, timer, and post-submit results",
@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
+    "pg": "^8.20.0",
     "sqlite3": "^5.1.7"
   }
 }
