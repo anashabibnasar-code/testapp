@@ -1,3 +1,4 @@
+﻿const ADMIN_DRAFT_KEY = "test_platform_admin_draft_v1";
 const draftQuestions = [];
 
 const testTitleInput = document.getElementById("testTitle");
@@ -41,6 +42,57 @@ function escapeHtml(text) {
     .replaceAll("'", "&#039;");
 }
 
+function isValidDraftQuestion(item) {
+  return (
+    item &&
+    typeof item.question === "string" &&
+    Array.isArray(item.options) &&
+    item.options.length === 4 &&
+    item.options.every((x) => typeof x === "string" && x.trim()) &&
+    Number.isInteger(item.answerIndex) &&
+    item.answerIndex >= 0 &&
+    item.answerIndex <= 3
+  );
+}
+
+function saveDraftState() {
+  const state = {
+    title: testTitleInput.value,
+    durationMinutes: durationInput.value,
+    passMark: passMarkInput.value,
+    bulkInput: bulkInput.value,
+    questions: draftQuestions,
+  };
+  localStorage.setItem(ADMIN_DRAFT_KEY, JSON.stringify(state));
+}
+
+function loadDraftState() {
+  try {
+    const raw = localStorage.getItem(ADMIN_DRAFT_KEY);
+    if (!raw) return;
+
+    const state = JSON.parse(raw);
+    if (state && typeof state.title === "string") testTitleInput.value = state.title;
+    if (state && typeof state.durationMinutes === "string") durationInput.value = state.durationMinutes;
+    if (state && typeof state.passMark === "string") passMarkInput.value = state.passMark;
+    if (state && typeof state.bulkInput === "string") bulkInput.value = state.bulkInput;
+
+    if (state && Array.isArray(state.questions)) {
+      const valid = state.questions.filter(isValidDraftQuestion);
+      draftQuestions.push(...valid);
+      if (valid.length > 0) {
+        adminMessage.textContent = `Recovered ${valid.length} unsaved question(s).`;
+      }
+    }
+  } catch {
+    // Ignore corrupted local storage and continue.
+  }
+}
+
+function clearDraftState() {
+  localStorage.removeItem(ADMIN_DRAFT_KEY);
+}
+
 function addSingleQuestion() {
   const question = questionText.value.trim();
   const options = [optA.value.trim(), optB.value.trim(), optC.value.trim(), optD.value.trim()];
@@ -60,6 +112,7 @@ function addSingleQuestion() {
   correctIndex.value = "0";
   adminMessage.textContent = `Added question ${draftQuestions.length}.`;
   renderDraft();
+  saveDraftState();
 }
 
 function parseQuestionBlock(blockText) {
@@ -77,14 +130,14 @@ function parseQuestionBlock(blockText) {
   for (const rawLine of lines) {
     const line = rawLine.replace(/\u00A0/g, " ");
     if (afterAnswer) {
-      const correctedAnswerMatch = line.match(/(?:✅\s*)?\bAnswer\s*:\s*([ABCD])\b/i);
+      const correctedAnswerMatch = line.match(/\bAnswer\s*:\s*([ABCD])\b/i);
       if (correctedAnswerMatch) {
         answerIndex = "ABCD".indexOf(correctedAnswerMatch[1].toUpperCase());
       }
       continue;
     }
 
-    const answerMatch = line.match(/(?:✅\s*)?\bAnswer\s*:\s*([ABCD])\b/i);
+    const answerMatch = line.match(/\bAnswer\s*:\s*([ABCD])\b/i);
     if (answerMatch) {
       answerIndex = "ABCD".indexOf(answerMatch[1].toUpperCase());
       currentOption = -1;
@@ -159,6 +212,7 @@ parseBulkBtn.addEventListener("click", () => {
   bulkInput.value = "";
   adminMessage.textContent = `Parsed and added ${parsed.length} questions.`;
   renderDraft();
+  saveDraftState();
 });
 
 saveTestBtn.addEventListener("click", async () => {
@@ -203,6 +257,7 @@ saveTestBtn.addEventListener("click", async () => {
     adminMessage.textContent = `Saved. Share this link: /test.html?id=${data.testId}`;
     draftQuestions.length = 0;
     renderDraft();
+    clearDraftState();
     loadTests();
   } catch (error) {
     adminMessage.textContent = error.message;
@@ -255,5 +310,21 @@ async function loadTests() {
   }
 }
 
+[
+  testTitleInput,
+  durationInput,
+  passMarkInput,
+  bulkInput,
+  questionText,
+  optA,
+  optB,
+  optC,
+  optD,
+].forEach((el) => {
+  el.addEventListener("input", saveDraftState);
+});
+correctIndex.addEventListener("change", saveDraftState);
+
+loadDraftState();
 renderDraft();
 loadTests();

@@ -6,3 +6,10 @@
     buildCommand: npm install
     startCommand: npm start
     autoDeploy: true
+    envVars:
+      - key: DB_PATH
+        value: /var/data/exam.db
+    disks:
+      - name: test-platform-data
+        mountPath: /var/data
+        sizeGB: 1
