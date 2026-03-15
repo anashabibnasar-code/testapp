@@ -8,9 +8,32 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(__dirname, "public")));
 
+function pick(row, ...keys) {
+  for (const key of keys) {
+    if (row && row[key] !== undefined && row[key] !== null) return row[key];
+  }
+  return undefined;
+}
+
+function toNumber(value, fallback = 0) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+}
+
+function normalizeTestRow(row) {
+  return {
+    id: toNumber(pick(row, "id"), 0),
+    title: String(pick(row, "title") || ""),
+    durationMinutes: toNumber(pick(row, "durationMinutes", "durationminutes", "duration_minutes"), 0),
+    passMark: toNumber(pick(row, "passMark", "passmark", "pass_mark"), 1),
+    createdAt: pick(row, "createdAt", "createdat", "created_at") || null,
+    totalQuestions: toNumber(pick(row, "totalQuestions", "totalquestions"), 0),
+  };
+}
+
 app.get("/api/tests", async (req, res) => {
   try {
-    const tests = await all(
+    const rows = await all(
       `SELECT
          t.id,
          t.title,
@@ -21,6 +44,7 @@ app.get("/api/tests", async (req, res) => {
        FROM tests t
        ORDER BY t.id DESC`
     );
+    const tests = rows.map(normalizeTestRow);
     res.json(tests);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch tests." });
@@ -102,6 +126,7 @@ app.get("/api/tests/:id", async (req, res) => {
       [testId]
     );
     if (!test) return res.status(404).json({ error: "Test not found." });
+    const normalizedTest = normalizeTestRow(test);
 
     const questions = await all(
       `SELECT id, text, option_a, option_b, option_c, option_d FROM questions WHERE test_id = ? ORDER BY id ASC`,
@@ -114,7 +139,13 @@ app.get("/api/tests/:id", async (req, res) => {
       options: [q.option_a, q.option_b, q.option_c, q.option_d],
     }));
 
-    res.json({ ...test, questions: formatted });
+    res.json({
+      id: normalizedTest.id,
+      title: normalizedTest.title,
+      durationMinutes: normalizedTest.durationMinutes,
+      passMark: normalizedTest.passMark,
+      questions: formatted,
+    });
   } catch (error) {
     res.status(500).json({ error: "Failed to load test." });
   }
@@ -145,11 +176,12 @@ app.post("/api/tests/:id/start", async (req, res) => {
   }
 
   try {
-    const test = await get(
+    const rawTest = await get(
       `SELECT id, duration_minutes AS durationMinutes, pass_mark AS passMark FROM tests WHERE id = ?`,
       [testId]
     );
-    if (!test) return res.status(404).json({ error: "Test not found." });
+    if (!rawTest) return res.status(404).json({ error: "Test not found." });
+    const test = normalizeTestRow(rawTest);
 
     const startedAt = Date.now();
     const result = await run(
@@ -178,11 +210,12 @@ app.post("/api/tests/:id/submit", async (req, res) => {
   }
 
   try {
-    const test = await get(
+    const rawTest = await get(
       `SELECT id, title, duration_minutes AS durationMinutes, pass_mark AS passMark FROM tests WHERE id = ?`,
       [testId]
     );
-    if (!test) return res.status(404).json({ error: "Test not found." });
+    if (!rawTest) return res.status(404).json({ error: "Test not found." });
+    const test = normalizeTestRow(rawTest);
 
     const submission = await get(`SELECT * FROM submissions WHERE id = ? AND test_id = ?`, [submissionId, testId]);
     if (!submission) return res.status(404).json({ error: "Submission not found." });
