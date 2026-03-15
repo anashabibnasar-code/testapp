@@ -1,0 +1,65 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin - Test Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="wrap">
+    <section class="panel">
+      <h1>Create Test</h1>
+      <p>Create test, set timer, and add questions with answers.</p>
+
+      <label>Test Title</label>
+      <input id="testTitle" type="text" placeholder="Mid Term - Physics" />
+
+      <label>Timer (minutes)</label>
+      <input id="durationMinutes" type="number" min="1" value="30" />
+
+      <div class="question-box">
+        <h2>Add Question</h2>
+        <label>Question</label>
+        <textarea id="questionText" rows="3"></textarea>
+
+        <label>Option A</label>
+        <input id="optA" type="text" />
+        <label>Option B</label>
+        <input id="optB" type="text" />
+        <label>Option C</label>
+        <input id="optC" type="text" />
+        <label>Option D</label>
+        <input id="optD" type="text" />
+
+        <label>Correct Option</label>
+        <select id="correctIndex">
+          <option value="0">A</option>
+          <option value="1">B</option>
+          <option value="2">C</option>
+          <option value="3">D</option>
+        </select>
+
+        <button id="addQuestionBtn" type="button">Add To Test</button>
+      </div>
+
+      <h2>Questions Added</h2>
+      <ul id="draftQuestions" class="list"></ul>
+
+      <button id="saveTestBtn" type="button">Save Test</button>
+      <p id="adminMessage" class="message"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Published Tests</h2>
+      <p>Share link: <code>/test.html?id=TEST_ID</code></p>
+      <ul id="testsList" class="list"></ul>
+    </section>
+  </main>
+
+  <script src="/admin.js"></script>
+</body>
+</html>
