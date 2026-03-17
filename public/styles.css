@@ -44,6 +44,21 @@ button:hover { opacity: 0.95; }
   margin-top: 8px;
   background: #b91c1c;
 }
+.secondary-btn {
+  background: #1d4ed8;
+}
+.button-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.button-row button {
+  margin-top: 0;
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
 .list { list-style: none; padding: 0; margin: 8px 0 0; }
 .list li {
   border: 1px solid #deebf7;
@@ -125,9 +140,25 @@ button:hover { opacity: 0.95; }
   padding: 10px;
   margin-top: 10px;
 }
+.review-panel {
+  margin-top: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f8fbff;
+  max-height: 480px;
+  overflow: auto;
+}
+.muted {
+  color: #64748b;
+  font-size: 0.92rem;
+}
 .correct { color: #166534; }
 .wrong { color: #991b1b; }
 .hidden { display: none; }
 @media (max-width: 900px) {
   .wrap { grid-template-columns: 1fr; }
+  .button-row {
+    grid-template-columns: 1fr;
+  }
 }

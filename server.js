@@ -31,6 +31,21 @@ function normalizeTestRow(row) {
   };
 }
 
+function normalizeSubmissionRow(row) {
+  return {
+    id: toNumber(pick(row, "id"), 0),
+    testId: toNumber(pick(row, "testId", "testid", "test_id"), 0),
+    studentName: String(pick(row, "studentName", "studentname", "student_name") || ""),
+    startedAt: toNumber(pick(row, "startedAt", "startedat", "started_at"), 0),
+    submittedAt: toNumber(pick(row, "submittedAt", "submittedat", "submitted_at"), 0),
+    score: toNumber(pick(row, "score"), 0),
+    total: toNumber(pick(row, "total"), 0),
+    answersJson: String(pick(row, "answersJson", "answersjson", "answers_json") || "[]"),
+    testTitle: String(pick(row, "testTitle", "testtitle", "title") || ""),
+    passMark: toNumber(pick(row, "passMark", "passmark", "pass_mark"), 1),
+  };
+}
+
 app.get("/api/tests", async (req, res) => {
   try {
     const rows = await all(
@@ -273,6 +288,114 @@ app.post("/api/tests/:id/submit", async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: "Failed to submit test." });
+  }
+});
+
+app.get("/api/tests/:id/submissions", async (req, res) => {
+  const testId = Number(req.params.id);
+  if (!Number.isInteger(testId)) return res.status(400).json({ error: "Invalid test id." });
+
+  try {
+    const rawTest = await get(`SELECT id, title, pass_mark AS passMark FROM tests WHERE id = ?`, [testId]);
+    if (!rawTest) return res.status(404).json({ error: "Test not found." });
+    const test = normalizeTestRow(rawTest);
+
+    const rows = await all(
+      `SELECT
+         id,
+         test_id AS testId,
+         student_name AS studentName,
+         started_at AS startedAt,
+         submitted_at AS submittedAt,
+         score,
+         total
+       FROM submissions
+       WHERE test_id = ? AND submitted_at IS NOT NULL
+       ORDER BY submitted_at DESC`,
+      [testId]
+    );
+
+    const submissions = rows.map((row) => {
+      const s = normalizeSubmissionRow(row);
+      const percent = Math.round((s.score / Math.max(s.total, 1)) * 100);
+      const result = s.score >= test.passMark ? "PASS" : "FAIL";
+      return {
+        id: s.id,
+        studentName: s.studentName,
+        startedAt: s.startedAt,
+        submittedAt: s.submittedAt,
+        score: s.score,
+        total: s.total,
+        percent,
+        result,
+      };
+    });
+
+    res.json({
+      testId: test.id,
+      testTitle: test.title,
+      passMark: test.passMark,
+      submissions,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to load submissions." });
+  }
+});
+
+app.get("/api/submissions/:id", async (req, res) => {
+  const submissionId = Number(req.params.id);
+  if (!Number.isInteger(submissionId)) return res.status(400).json({ error: "Invalid submission id." });
+
+  try {
+    const row = await get(
+      `SELECT
+         s.id,
+         s.test_id AS testId,
+         s.student_name AS studentName,
+         s.started_at AS startedAt,
+         s.submitted_at AS submittedAt,
+         s.score,
+         s.total,
+         s.answers_json AS answersJson,
+         t.title AS testTitle,
+         t.pass_mark AS passMark
+       FROM submissions s
+       JOIN tests t ON t.id = s.test_id
+       WHERE s.id = ?`,
+      [submissionId]
+    );
+
+    if (!row) return res.status(404).json({ error: "Submission not found." });
+    const submission = normalizeSubmissionRow(row);
+    if (!submission.submittedAt) return res.status(400).json({ error: "Submission is not completed yet." });
+
+    let review = [];
+    try {
+      const parsed = JSON.parse(submission.answersJson);
+      if (Array.isArray(parsed)) review = parsed;
+    } catch {
+      review = [];
+    }
+
+    const percent = Math.round((submission.score / Math.max(submission.total, 1)) * 100);
+    const result = submission.score >= submission.passMark ? "PASS" : "FAIL";
+
+    res.json({
+      id: submission.id,
+      testId: submission.testId,
+      testTitle: submission.testTitle,
+      studentName: submission.studentName,
+      startedAt: submission.startedAt,
+      submittedAt: submission.submittedAt,
+      score: submission.score,
+      total: submission.total,
+      passMark: submission.passMark,
+      percent,
+      result,
+      review,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to load submission details." });
   }
 });
 

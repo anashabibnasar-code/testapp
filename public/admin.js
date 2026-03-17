@@ -18,6 +18,9 @@ const draftQuestionsList = document.getElementById("draftQuestions");
 const saveTestBtn = document.getElementById("saveTestBtn");
 const testsList = document.getElementById("testsList");
 const adminMessage = document.getElementById("adminMessage");
+const resultsMeta = document.getElementById("resultsMeta");
+const submissionList = document.getElementById("submissionList");
+const submissionDetail = document.getElementById("submissionDetail");
 
 function renderDraft() {
   draftQuestionsList.innerHTML = "";
@@ -40,6 +43,44 @@ function escapeHtml(text) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function getStudentLink(testId) {
+  return `${window.location.origin}/test.html?id=${testId}`;
+}
+
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const input = document.createElement("textarea");
+  input.value = text;
+  input.setAttribute("readonly", "");
+  input.style.position = "absolute";
+  input.style.left = "-9999px";
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand("copy");
+  document.body.removeChild(input);
+}
+
+function formatDateTime(timestamp) {
+  const value = Number(timestamp);
+  if (!Number.isFinite(value) || value <= 0) return "-";
+  return new Date(value).toLocaleString();
+}
+
+function clearResultsView(message = "Select a test and click View Results.") {
+  resultsMeta.textContent = message;
+  submissionList.innerHTML = "";
+  submissionDetail.innerHTML = "";
+  submissionDetail.classList.add("hidden");
+}
+
+function renderQuestionForReview(text) {
+  return escapeHtml(String(text || "")).replaceAll("\n", "<br>");
 }
 
 function isValidDraftQuestion(item) {
@@ -246,7 +287,13 @@ saveTestBtn.addEventListener("click", async () => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Failed to save test.");
 
-    adminMessage.textContent = `Saved. Share this link: /test.html?id=${data.testId}`;
+    const fullLink = getStudentLink(data.testId);
+    try {
+      await copyText(fullLink);
+      adminMessage.textContent = `Saved. Student link copied: ${fullLink}`;
+    } catch {
+      adminMessage.textContent = `Saved. Share this link: ${fullLink}`;
+    }
     draftQuestions.length = 0;
     renderDraft();
     clearDraftState();
@@ -259,10 +306,28 @@ saveTestBtn.addEventListener("click", async () => {
 testsList.addEventListener("click", async (event) => {
   const target = event.target;
   if (!(target instanceof HTMLElement)) return;
-  if (!target.classList.contains("delete-test-btn")) return;
 
   const testId = Number(target.dataset.id);
   if (!Number.isInteger(testId)) return;
+
+  if (target.classList.contains("copy-link-btn")) {
+    const link = getStudentLink(testId);
+    try {
+      await copyText(link);
+      adminMessage.textContent = `Student link copied: ${link}`;
+    } catch {
+      adminMessage.textContent = `Copy failed. Link: ${link}`;
+    }
+    return;
+  }
+
+  if (target.classList.contains("view-results-btn")) {
+    const testTitle = target.dataset.title || `Test ${testId}`;
+    await loadSubmissions(testId, testTitle);
+    return;
+  }
+
+  if (!target.classList.contains("delete-test-btn")) return;
 
   const ok = window.confirm("Delete this test permanently?");
   if (!ok) return;
@@ -272,11 +337,95 @@ testsList.addEventListener("click", async (event) => {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Failed to delete.");
     adminMessage.textContent = `Deleted test ${testId}.`;
+    clearResultsView();
     loadTests();
   } catch (error) {
     adminMessage.textContent = error.message;
   }
 });
+
+submissionList.addEventListener("click", async (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement)) return;
+  if (!target.classList.contains("review-submission-btn")) return;
+
+  const submissionId = Number(target.dataset.id);
+  if (!Number.isInteger(submissionId)) return;
+
+  try {
+    const response = await fetch(`/api/submissions/${submissionId}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to load review.");
+
+    const summaryClass = data.result === "PASS" ? "correct" : "wrong";
+    const summary = `
+      <div class="score">
+        Student: ${escapeHtml(data.studentName)}<br>
+        Test: ${escapeHtml(data.testTitle)}<br>
+        Score: ${data.score}/${data.total} (${data.percent}%)<br>
+        Pass Mark: ${data.passMark}/${data.total}<br>
+        Result: <span class="${summaryClass}">${escapeHtml(data.result)}</span><br>
+        Submitted: ${escapeHtml(formatDateTime(data.submittedAt))}
+      </div>
+    `;
+
+    const reviewHtml = data.review
+      .map((item, index) => {
+        const selectedText =
+          item.selectedIndex === null || item.selectedIndex === undefined
+            ? "Not answered"
+            : `${"ABCD"[item.selectedIndex]}) ${escapeHtml(item.options[item.selectedIndex] || "-")}`;
+        const correctText = `${"ABCD"[item.correctIndex]}) ${escapeHtml(item.options[item.correctIndex] || "-")}`;
+        return `
+          <div class="review-item">
+            <strong>Q${index + 1}. ${renderQuestionForReview(item.question)}</strong>
+            <div class="${item.isCorrect ? "correct" : "wrong"}">Student answer: ${selectedText}</div>
+            <div class="correct">Correct answer: ${correctText}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    submissionDetail.innerHTML = `${summary}${reviewHtml}`;
+    submissionDetail.classList.remove("hidden");
+  } catch (error) {
+    resultsMeta.textContent = error.message;
+  }
+});
+
+async function loadSubmissions(testId, testTitle) {
+  submissionList.innerHTML = "";
+  submissionDetail.innerHTML = "";
+  submissionDetail.classList.add("hidden");
+  resultsMeta.textContent = `Loading results for ${testTitle}...`;
+
+  try {
+    const response = await fetch(`/api/tests/${testId}/submissions`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed to load results.");
+
+    resultsMeta.textContent = `${data.testTitle} | Pass Mark: ${data.passMark} | Submissions: ${data.submissions.length}`;
+
+    if (data.submissions.length === 0) {
+      submissionList.innerHTML = "<li>No student submissions yet.</li>";
+      return;
+    }
+
+    data.submissions.forEach((item) => {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <strong>${escapeHtml(item.studentName)}</strong><br>
+        Score: ${item.score}/${item.total} (${item.percent}%) |
+        Result: <span class="${item.result === "PASS" ? "correct" : "wrong"}">${item.result}</span><br>
+        Submitted: ${escapeHtml(formatDateTime(item.submittedAt))}<br>
+        <button type="button" class="review-submission-btn" data-id="${item.id}">Review Answers</button>
+      `;
+      submissionList.appendChild(li);
+    });
+  } catch (error) {
+    resultsMeta.textContent = error.message;
+  }
+}
 
 async function loadTests() {
   testsList.innerHTML = "";
@@ -285,17 +434,26 @@ async function loadTests() {
     const tests = await response.json();
     tests.forEach((t) => {
       const li = document.createElement("li");
+      const studentLink = getStudentLink(t.id);
       li.innerHTML = `
         <strong>${escapeHtml(t.title)}</strong><br>
         Test ID: ${t.id} | Timer: ${t.durationMinutes} min | Pass Mark: ${t.passMark}/${t.totalQuestions}<br>
-        <a href="/test.html?id=${t.id}" target="_blank" rel="noopener">Open Student Link</a><br>
-        <button type="button" class="delete-test-btn" data-id="${t.id}">Delete Test</button>
+        <a href="/test.html?id=${t.id}" target="_blank" rel="noopener">Open Student Page</a><br>
+        <div class="button-row">
+          <button type="button" class="copy-link-btn" data-id="${t.id}">Copy Test Link</button>
+          <button type="button" class="view-results-btn secondary-btn" data-id="${t.id}" data-title="${escapeHtml(
+            t.title
+          )}">View Results</button>
+          <button type="button" class="delete-test-btn" data-id="${t.id}">Delete Test</button>
+        </div>
+        <small class="muted">${escapeHtml(studentLink)}</small>
       `;
       testsList.appendChild(li);
     });
 
     if (tests.length === 0) {
       testsList.innerHTML = "<li>No tests published yet.</li>";
+      clearResultsView();
     }
   } catch {
     testsList.innerHTML = "<li>Failed to load tests.</li>";
@@ -319,4 +477,5 @@ correctIndex.addEventListener("change", saveDraftState);
 
 loadDraftState();
 renderDraft();
+clearResultsView();
 loadTests();
